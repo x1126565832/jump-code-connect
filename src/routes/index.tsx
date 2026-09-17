@@ -190,8 +190,9 @@ function Console() {
       const line: LogLine = {
         id: counter.current,
         time: stamp,
-        level: pick.level,
-        text: pick.text.replace("{n}", String(20 + Math.floor(Math.random() * 79))),
+        level: pick!.level,
+        text: pick!.text.replace("{n}", String(20 + Math.floor(Math.random() * 79))),
+
       };
       setLogs((prev) => [...prev.slice(-200), line]);
     }, 1800);
@@ -229,11 +230,12 @@ function Console() {
               <span className="relative inline-flex size-2.5 rounded-full bg-brand" />
             </span>
             <span className="font-mono text-xs text-fg">
-              {PROJECTS[activeProject].name.split(" ")[1]}
+              {PROJECTS[activeProject]!.name.split(" ")[1]}
             </span>
             <span className="font-mono text-[11px] text-muted-foreground">
-              {PROJECTS[activeProject].host}
+              {PROJECTS[activeProject]!.host}
             </span>
+
           </div>
           <div className="ml-auto flex items-center gap-2">
             <span className="hidden items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 font-mono text-[11px] text-muted-foreground md:inline-flex">
