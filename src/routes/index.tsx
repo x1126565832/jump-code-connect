@@ -1,443 +1,79 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { Check, ChevronDown, CircleAlert, CloudCog, Copy, Eye, EyeOff, FolderCog, Layers3, Plus, Server, ShieldCheck, TestTube2, Trash2, X, Zap } from "lucide-react";
+import { useState } from "react";
+import { ConsoleShell } from "@/components/console-shell";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "Kestrel Ops 控制台 · 线上 Java 日志实时排查" },
-      {
-        name: "description",
-        content:
-          "跨平台 AI Skill 管理界面：堡垒机凭据、项目服务器切换、滚动式在线日志、AI 命令流与操作记录留存。",
-      },
-      { property: "og:title", content: "Kestrel Ops 控制台 · 线上 Java 日志实时排查" },
-      {
-        property: "og:description",
-        content: "通过堡垒机连接内网 Java 服务，在一个界面里看完日志、AI 命令与操作审计。",
-      },
-    ],
-  }),
-  component: Console,
+  head: () => ({ meta: [
+    { title: "配置 · jms 本机控制台" },
+    { name: "description", content: "配置 JumpServer、Jenkins 与 Java 项目服务器映射。" },
+    { property: "og:title", content: "配置 · jms 本机控制台" },
+    { property: "og:description", content: "配置 JumpServer、Jenkins 与 Java 项目服务器映射。" },
+    { property: "og:type", content: "website" },
+    { name: "twitter:card", content: "summary" },
+  ]}),
+  component: ConfigPage,
 });
 
-type Level = "INFO" | "WARN" | "ERROR" | "TRACE";
-
-type LogLine = {
-  id: number;
-  time: string;
-  level: Level;
-  text: string;
-};
-
-const SEED_LOGS: Omit<LogLine, "id">[] = [
-  {
-    time: "2024-11-08 14:32:01.224",
-    level: "INFO",
-    text: "[http-nio-8080-exec-4] c.k.gateway.filter.AuthFilter - 请求鉴权通过 userId=100233",
-  },
-  {
-    time: "2024-11-08 14:32:01.310",
-    level: "INFO",
-    text: "[scheduling-1] c.k.gateway.job.SettleJob - 定时结算任务启动 batch=20241108",
-  },
-  {
-    time: "2024-11-08 14:32:02.055",
-    level: "WARN",
-    text: "[http-nio-8080-exec-9] c.k.gateway.client.PayClient - 支付回调超时 retry=1/3 url=/pay/callback",
-  },
-  {
-    time: "2024-11-08 14:32:03.881",
-    level: "ERROR",
-    text: "[http-nio-8080-exec-9] o.a.c.c.C.[.[.[/] - Exception processing request",
-  },
-  {
-    time: "14:32:03.881",
-    level: "TRACE",
-    text: "java.util.concurrent.TimeoutException: Request timed out",
-  },
-  {
-    time: "14:32:03.882",
-    level: "TRACE",
-    text: "  at org.apache.http.impl.nio.client.CloseableHttpAsyncClient...",
-  },
-  {
-    time: "14:32:03.882",
-    level: "TRACE",
-    text: "  at com.kestra.gateway.client.PayClient.invoke(PayClient.java:142)",
-  },
-  {
-    time: "2024-11-08 14:32:04.102",
-    level: "INFO",
-    text: "[scheduling-1] c.k.gateway.job.SettleJob - 结算完成 count=1284 amount=￥3,902,118.40",
-  },
-  {
-    time: "2024-11-08 14:32:05.440",
-    level: "INFO",
-    text: "[http-nio-8080-exec-2] c.k.gateway.controller.OrderApi - 订单查询 orderId=SO202411088821",
-  },
-  {
-    time: "2024-11-08 14:32:06.001",
-    level: "INFO",
-    text: "[main] o.s.b.a.l.ConditionEvaluationReport - Started GatewayApp in 42.11s",
-  },
+type Project = { name: string; alias: string; env: "正式" | "测试"; servers: string; account: string; logs: number; guarded: boolean };
+const PROJECTS: Project[] = [
+  { name: "data-sync", alias: "费用报销", env: "正式", servers: "10.20.1.81\n10.20.1.82", account: "auto", logs: 1, guarded: true },
+  { name: "inventory", alias: "库存中心", env: "正式", servers: "10.20.1.51", account: "auto", logs: 1, guarded: true },
+  { name: "mobile-api", alias: "移动端接口", env: "测试", servers: "10.20.2.71", account: "auto", logs: 1, guarded: true },
+  { name: "order-service", alias: "订单服务", env: "正式", servers: "3 台集群", account: "auto", logs: 1, guarded: true },
+  { name: "payment-gateway", alias: "支付网关", env: "正式", servers: "10.20.1.41", account: "auto", logs: 1, guarded: true },
 ];
 
-const STREAM_POOL: Omit<LogLine, "id" | "time">[] = [
-  {
-    level: "INFO",
-    text: "[http-nio-8080-exec-6] c.k.gateway.controller.OrderApi - 订单创建成功 orderId=SO202411088{n}",
-  },
-  {
-    level: "INFO",
-    text: "[lettuce-nioEventLoop-4] c.k.gateway.cache.RedisTemplate - 缓存命中 key=order:detail:{n}",
-  },
-  {
-    level: "WARN",
-    text: "[http-nio-8080-exec-3] c.k.gateway.client.PayClient - 连接池占用 {n}% 接近上限",
-  },
-  {
-    level: "ERROR",
-    text: "[http-nio-8080-exec-9] c.k.gateway.client.PayClient - 支付回调失败 code=GW_TIMEOUT attempt={n}",
-  },
-  {
-    level: "INFO",
-    text: "[scheduling-2] c.k.gateway.job.HealthJob - 健康检查通过 latency={n}ms",
-  },
-];
+const fieldClass = "h-10 w-full rounded-md border border-input bg-field px-3 text-sm text-foreground outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/15";
+const labelClass = "mb-1.5 block text-xs font-semibold text-foreground";
 
-const PROJECTS = [
-  { name: "交易网关 prod-gateway", host: "10.20.4.17:22", active: true },
-  { name: "支付核心 pay-core", host: "10.20.5.11:22", active: false },
-  { name: "风控引擎 risk-engine", host: "10.20.6.4:22", active: false },
-  { name: "消息中心 msg-center", host: "10.20.7.9:22", active: false },
-];
+function ConfigPage() {
+  const [editing, setEditing] = useState<Project | null>(null);
+  const [secretVisible, setSecretVisible] = useState(false);
+  const [tested, setTested] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [assetsOpen, setAssetsOpen] = useState(false);
 
-const CREDENTIALS = [
-  { label: "堡垒机 ID", value: "jms-8821" },
-  { label: "Secret", value: "••••••••" },
-  { label: "账号", value: "ops.lin" },
-  { label: "域名", value: "bastion.kst" },
-];
-
-const AI_COMMANDS = [
-  {
-    cmd: "tail -f app.log",
-    result: "实时跟随日志流，已识别 3 条 ERROR",
-    highlight: false,
-  },
-  {
-    cmd: 'grep -n "TimeoutException" app.log',
-    result: "命中 14 处，集中在 PayClient.invoke",
-    highlight: false,
-  },
-  {
-    cmd: "jstack 21431",
-    result: "线程 http-nio-8080-exec-9 处于 TIMED_WAITING，疑似连接池耗尽",
-    highlight: true,
-  },
-];
-
-const AUDIT = [
-  { time: "14:31", who: "ops.lin", cmd: "grep -n Timeout", status: "成功" },
-  { time: "14:28", who: "AI 助手", cmd: "jstack 21431", status: "成功" },
-  { time: "14:25", who: "AI 助手", cmd: "tail -f app.log", status: "成功" },
-  { time: "14:20", who: "ops.lin", cmd: "cat config.yml", status: "超时" },
-  { time: "14:12", who: "ops.lin", cmd: "ps -ef | grep java", status: "成功" },
-];
-
-const LEVELS: Array<Level | "ALL"> = ["ALL", "INFO", "WARN", "ERROR"];
-
-function levelClass(level: Level) {
-  if (level === "WARN") return "text-warn";
-  if (level === "ERROR") return "text-err";
-  if (level === "TRACE") return "text-muted-foreground/60";
-  return "text-accent";
-}
-
-function bodyClass(level: Level) {
-  if (level === "WARN") return "text-warn/85";
-  if (level === "ERROR") return "text-err/85";
-  if (level === "TRACE") return "text-err/60";
-  return "text-fg/90";
-}
-
-function statusClass(status: string) {
-  if (status === "成功") return "bg-ok/15 text-ok";
-  if (status === "超时") return "bg-warn/15 text-warn";
-  return "bg-err/15 text-err";
-}
-
-function Console() {
-  const [logs, setLogs] = useState<LogLine[]>(() =>
-    SEED_LOGS.map((line, i) => ({ ...line, id: i })),
-  );
-  const [following, setFollowing] = useState(true);
-  const [activeLevel, setActiveLevel] = useState<Level | "ALL">("ALL");
-  const [activeProject, setActiveProject] = useState(0);
-  const [copied, setCopied] = useState(false);
-  const streamRef = useRef<HTMLDivElement>(null);
-  const counter = useRef(SEED_LOGS.length);
-
-  useEffect(() => {
-    if (!following) return;
-    const timer = window.setInterval(() => {
-      const pick = STREAM_POOL[Math.floor(Math.random() * STREAM_POOL.length)];
-      const now = new Date();
-      const stamp = `${now.toLocaleDateString("sv-SE")} ${now.toLocaleTimeString("en-GB")}.${String(
-        now.getMilliseconds(),
-      ).padStart(3, "0")}`;
-      counter.current += 1;
-      const line: LogLine = {
-        id: counter.current,
-        time: stamp,
-        level: pick!.level,
-        text: pick!.text.replace("{n}", String(20 + Math.floor(Math.random() * 79))),
-
-      };
-      setLogs((prev) => [...prev.slice(-200), line]);
-    }, 1800);
-    return () => window.clearInterval(timer);
-  }, [following]);
-
-  useEffect(() => {
-    if (!following) return;
-    const el = streamRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [logs, following]);
-
-  const visible =
-    activeLevel === "ALL" ? logs : logs.filter((l) => l.level === activeLevel || l.level === "TRACE");
-
-  return (
-    <div className="min-h-screen bg-ink text-fg text-sm antialiased">
-      <header className="sticky top-0 z-20 border-b border-line bg-panel/95">
-        <div className="flex h-14 items-center gap-3 px-4">
-          <div className="flex items-center gap-2">
-            <div className="grid size-8 place-items-center rounded-lg bg-brand text-base font-bold text-ink">
-              K
-            </div>
-            <div className="leading-tight">
-              <div className="text-[15px] font-semibold">
-                Kestrel<span className="font-normal text-muted-foreground"> Ops</span>
-              </div>
-              <div className="font-mono text-[11px] text-muted-foreground">skill · v0.4.1</div>
-            </div>
-          </div>
-          <div className="mx-1 h-7 w-px bg-line" />
-          <div className="flex items-center gap-2">
-            <span className="relative flex size-2.5">
-              <span className="ops-pulse-dot absolute inline-flex size-full rounded-full bg-brand" />
-              <span className="relative inline-flex size-2.5 rounded-full bg-brand" />
-            </span>
-            <span className="font-mono text-xs text-fg">
-              {PROJECTS[activeProject]!.name.split(" ")[1]}
-            </span>
-            <span className="font-mono text-[11px] text-muted-foreground">
-              {PROJECTS[activeProject]!.host}
-            </span>
-
-          </div>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden items-center gap-1.5 rounded-full border border-line bg-panel-2 px-2.5 py-1 font-mono text-[11px] text-muted-foreground md:inline-flex">
-              <span className="size-1.5 rounded-full bg-accent" />
-              堡垒机已连接
-            </span>
-            <button
-              onClick={() => {
-                setCopied(true);
-                window.setTimeout(() => setCopied(false), 1600);
-              }}
-              className="rounded-lg bg-brand px-3 py-2 text-sm font-semibold text-ink transition-colors hover:bg-brand-hover"
-            >
-              {copied ? "链接已复制" : "分享技能配置"}
-            </button>
-          </div>
+  return <ConsoleShell><main className="mx-auto max-w-[1220px] px-4 py-7 md:px-8 md:py-9">
+    <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div><p className="mb-2 font-mono text-[11px] font-semibold text-primary">WORKSPACE / CONFIG</p><h1 className="font-display text-2xl font-semibold">{editing ? "编辑项目映射" : "配置工作台"}</h1><p className="mt-2 text-sm text-muted-foreground">{editing ? `正在编辑 ${editing.name} 的服务器与日志规则` : "管理连接凭据、构建实例和项目服务器映射"}</p></div>
+      <div className="flex items-center gap-2"><span className="rounded-md border border-border bg-surface px-3 py-2 font-mono text-[11px] text-muted-foreground">~/.jms/config.toml</span>{!editing && <button onClick={() => setSaved(true)} className="h-9 rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary-hover">{saved ? "已保存" : "保存配置"}</button>}</div>
+    </div>
+    {editing ? <ProjectEditor project={editing} onBack={() => setEditing(null)} /> : <>
+      <section className="mb-5 overflow-hidden rounded-lg border border-primary/25 bg-surface">
+        <div className="flex items-center gap-3 border-b border-border px-5 py-4"><div className="grid size-9 place-items-center rounded-md bg-primary/15 text-primary"><Zap className="size-4" /></div><div><h2 className="font-display text-sm font-semibold">首次配置 · 约 2 分钟</h2><p className="mt-0.5 text-xs text-muted-foreground">完成下面三步，即可让 AI 开始排查线上日志</p></div><span className="ml-auto rounded-md bg-warning/12 px-2 py-1 text-[10px] font-semibold text-warning">2 项待完成</span></div>
+        <div className="grid divide-y divide-border md:grid-cols-3 md:divide-x md:divide-y-0">
+          {[{n:"01",t:"填写 JumpServer 凭据",d:"个人信息 → API Key",s:"必填"},{n:"02",t:"配置 Jenkins",d:"需要构建部署时填写",s:"建议"},{n:"03",t:"保存并测试连接",d:"确认资产与终端通道",s:"必做"}].map((step) => <div key={step.n} className="flex gap-3 p-4"><span className="font-mono text-xs font-bold text-primary">{step.n}</span><div><div className="text-sm font-semibold">{step.t}<span className="ml-2 text-[10px] text-danger">{step.s}</span></div><p className="mt-1 text-xs text-muted-foreground">{step.d}</p></div></div>)}
         </div>
-      </header>
+      </section>
 
-      <div className="flex h-[calc(100vh-3.5rem)]">
-        <aside className="w-60 shrink-0 overflow-y-auto border-r border-line bg-panel-2/60">
-          <div className="border-b border-line p-3">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              连接凭据
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_300px]">
+        <div className="space-y-5">
+          <section className="panel"><PanelTitle icon={CloudCog} title="JumpServer 连接" subtitle="堡垒机认证与 Web 终端会话" actions={<><button onClick={() => setTested(true)} className="btn-secondary"><TestTube2 className="size-3.5" />测试连接</button><button onClick={() => setSaved(true)} className="btn-primary">保存</button></>} />
+            <div className="grid gap-4 p-5 md:grid-cols-2">
+              <Field label="API 地址" value="https://jump.example.com" mono /><Field label="Web 终端域名" value="jump.example.com" mono /><Field label="AccessKey ID" value="AKID-DEMO-0000-DEMO" mono />
+              <label><span className={labelClass}>AccessKey Secret</span><div className="relative"><input className={`${fieldClass} pr-10 font-mono`} value={secretVisible ? "jms-demo-secret" : "••••••••••••••"} readOnly /><button onClick={() => setSecretVisible((v) => !v)} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted-foreground" aria-label="显示或隐藏 Secret">{secretVisible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}</button></div></label>
+              <Field label="会话 Cookie" value="未配置（macOS 可留空）" mono /><Field label="组织 ID" value="00000000-0000-0000-0000-000000000002" mono />
             </div>
-            <div className="space-y-2 font-mono text-xs">
-              {CREDENTIALS.map((c) => (
-                <div
-                  key={c.label}
-                  className="flex items-center justify-between rounded-md bg-ink/60 px-2.5 py-1.5 ring-1 ring-line"
-                >
-                  <span className="text-muted-foreground">{c.label}</span>
-                  <span className="text-fg">{c.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="p-3">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              项目 / 服务器
-            </div>
-            <div className="space-y-1">
-              {PROJECTS.map((p, i) => (
-                <button
-                  key={p.name}
-                  onClick={() => setActiveProject(i)}
-                  className={`flex w-full items-center gap-2 rounded-md px-2.5 py-2 text-left text-xs font-medium transition-colors ${
-                    i === activeProject
-                      ? "bg-brand/15 text-brand ring-1 ring-brand/30"
-                      : "text-muted-foreground hover:bg-panel-2"
-                  }`}
-                >
-                  <span
-                    className={`size-1.5 shrink-0 rounded-full ${
-                      i === activeProject ? "bg-brand" : "bg-line"
-                    }`}
-                  />
-                  {p.name}
-                </button>
-              ))}
-            </div>
-          </div>
-        </aside>
-
-        <main className="relative flex min-w-0 flex-1 flex-col">
-          <div className="flex items-center gap-2 border-b border-line bg-panel px-4 py-2">
-            <span className="font-mono text-xs text-muted-foreground">tail -f app.log</span>
-            <div className="ml-auto flex items-center gap-1.5">
-              <button
-                onClick={() => setFollowing(true)}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  following
-                    ? "bg-brand text-ink"
-                    : "border border-line bg-panel-2 text-muted-foreground hover:text-fg"
-                }`}
-              >
-                跟随
-              </button>
-              <button
-                onClick={() => setFollowing(false)}
-                className={`rounded-md px-3 py-1.5 text-xs transition-colors ${
-                  following
-                    ? "border border-line bg-panel-2 text-muted-foreground hover:text-fg"
-                    : "bg-brand text-ink font-semibold"
-                }`}
-              >
-                暂停
-              </button>
-              <div className="mx-1 h-5 w-px bg-line" />
-              <span className="font-mono text-[11px] text-muted-foreground">级别</span>
-              {LEVELS.map((lv) => (
-                <button
-                  key={lv}
-                  onClick={() => setActiveLevel(lv)}
-                  className={`rounded-md border px-2 py-1 text-xs font-medium transition-colors ${
-                    activeLevel === lv
-                      ? lv === "ERROR"
-                        ? "border-err/30 bg-panel-2 text-err ring-1 ring-err/30"
-                        : "border-line bg-panel-2 text-fg"
-                      : "border-line bg-panel-2 text-muted-foreground hover:text-fg"
-                  }`}
-                >
-                  {lv}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div
-            ref={streamRef}
-            className="relative min-h-0 flex-1 overflow-y-auto bg-ink px-4 py-3 font-mono text-[13px] leading-[1.7]"
-          >
-            <div className="space-y-0.5">
-              {visible.map((l) => (
-                <div
-                  key={l.id}
-                  className="ops-log-in -mx-1 flex gap-3 rounded px-1 transition-colors hover:bg-panel-2/60"
-                >
-                  <span
-                    className={`shrink-0 ${
-                      l.level === "TRACE" ? "text-muted-foreground/60" : "text-muted-foreground"
-                    }`}
-                  >
-                    {l.time}
-                  </span>
-                  <span className={`w-12 shrink-0 ${levelClass(l.level)}`}>
-                    {l.level === "TRACE" ? "" : l.level}
-                  </span>
-                  <span className={`text-pretty ${bodyClass(l.level)}`}>{l.text}</span>
-                </div>
-              ))}
-              <div className="flex gap-3">
-                <span className="text-brand">❯</span>
-                <span className="ops-blink inline-block h-4 w-2 bg-brand" />
-              </div>
-            </div>
-          </div>
-
-          {!following && (
-            <button
-              onClick={() => setFollowing(true)}
-              className="absolute bottom-4 right-6 flex items-center gap-2 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-ink shadow-lg"
-            >
-              <span className="size-1.5 rounded-full bg-ink" />
-              跳至最新
-            </button>
-          )}
-        </main>
-
-        <aside className="flex w-80 shrink-0 flex-col overflow-y-auto border-l border-line bg-panel-2/60">
-          <div className="border-b border-line p-3">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              AI 命令流
-            </div>
-            <div className="space-y-2">
-              {AI_COMMANDS.map((c) => (
-                <div
-                  key={c.cmd}
-                  className={`rounded-lg bg-ink/60 p-2.5 ring-1 ${
-                    c.highlight ? "ring-brand/20" : "ring-line"
-                  }`}
-                >
-                  <div className="mb-1.5 flex items-center gap-1.5">
-                    <span
-                      className={`size-1.5 shrink-0 rounded-full ${
-                        c.highlight ? "bg-brand" : "bg-accent"
-                      }`}
-                    />
-                    <span
-                      className={`font-mono text-[11px] ${c.highlight ? "text-brand" : "text-accent"}`}
-                    >
-                      {c.cmd}
-                    </span>
-                  </div>
-                  <div className="text-pretty font-mono text-[11px] text-muted-foreground">
-                    {c.result}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          <div className="min-h-0 flex-1 p-3">
-            <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-              操作记录
-            </div>
-            <div className="space-y-1.5">
-              {AUDIT.map((a) => (
-                <div key={a.time} className="flex items-center gap-2 text-xs">
-                  <span className="shrink-0 font-mono text-muted-foreground">{a.time}</span>
-                  <span className="shrink-0 text-fg/90">{a.who}</span>
-                  <span className="truncate font-mono text-muted-foreground">{a.cmd}</span>
-                  <span
-                    className={`ml-auto shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${statusClass(a.status)}`}
-                  >
-                    {a.status}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
+            {tested && <div className="mx-5 mb-5 flex items-start gap-3 rounded-md border border-success/25 bg-success/8 p-3 text-sm"><Check className="mt-0.5 size-4 text-success" /><div><strong className="text-success">连接自检通过</strong><p className="mt-1 text-xs text-muted-foreground">API 认证、可用资产、终端通道和日志权限均正常。</p></div></div>}
+          </section>
+          <section className="panel"><PanelTitle icon={Server} title="Jenkins 实例" subtitle="构建部署服务，可选配置" actions={<button className="btn-secondary"><Plus className="size-3.5" />新增实例</button>} /><div className="divide-y divide-border">{[{n:"dev",u:"https://jenkins-dev.example.com",ok:true},{n:"prod",u:"https://jenkins.example.com",ok:false},{n:"hk",u:"http://10.0.100.111:8890",ok:false}].map((j) => <div key={j.n} className="grid items-center gap-2 px-5 py-3 text-sm sm:grid-cols-[70px_1fr_110px_100px_auto]"><strong className="font-mono">{j.n}</strong><span className="truncate font-mono text-xs text-muted-foreground">{j.u}</span><span className="text-xs text-muted-foreground">your-name</span><span className={`text-xs font-medium ${j.ok ? "text-success" : "text-warning"}`}>{j.ok ? "Token 已配置" : "Token 未配置"}</span><button className="btn-icon" aria-label={`编辑 ${j.n}`}>编辑</button></div>)}</div></section>
+        </div>
+        <aside className="space-y-5">
+          <section className="panel p-5"><div className="mb-4 flex items-center gap-2"><ShieldCheck className="size-4 text-success" /><h2 className="font-display text-sm font-semibold">连接状态</h2></div><div className="space-y-3">{["本地依赖","API 认证","可用资产","终端通道","日志可读"].map((x,i) => <div key={x} className="flex items-center text-xs"><span className="text-muted-foreground">{x}</span><span className="mx-3 h-px flex-1 bg-border"/><Check className={`size-3.5 ${i < 3 ? "text-success" : "text-muted-foreground"}`} /></div>)}</div><div className="mt-5 border-t border-border pt-4"><div className="flex justify-between text-xs"><span className="text-muted-foreground">配置完成度</span><strong>72%</strong></div><div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full w-[72%] bg-primary" /></div></div></section>
+          <section className="panel p-5"><div className="mb-3 flex items-center gap-2"><CircleAlert className="size-4 text-warning" /><h2 className="font-display text-sm font-semibold">安全提示</h2></div><p className="text-xs leading-5 text-muted-foreground">凭据仅保存在本机配置文件。分享 Skill 时不会包含 Secret 与会话 Cookie。</p></section>
         </aside>
       </div>
-    </div>
-  );
+
+      <section className="panel mt-5"><PanelTitle icon={FolderCog} title="项目映射" subtitle="点击项目行进入编辑" actions={<div className="flex gap-2"><button className="btn-secondary">拉取资产列表</button><button className="btn-primary"><Plus className="size-3.5" />新增项目</button></div>} />
+        <div className="overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr className="border-b border-border bg-field/70 text-[11px] text-muted-foreground"><th className="px-5 py-3 font-semibold">项目</th><th className="px-4 py-3 font-semibold">环境</th><th className="px-4 py-3 font-semibold">服务器</th><th className="px-4 py-3 font-semibold">登录账号</th><th className="px-4 py-3 font-semibold">危险命令</th><th className="px-4 py-3 font-semibold">日志</th><th className="px-5 py-3" /></tr></thead><tbody className="divide-y divide-border">{PROJECTS.map((p) => <tr key={p.name} onClick={() => setEditing(p)} className="cursor-pointer transition-colors hover:bg-primary/5"><td className="px-5 py-3"><strong className="font-mono text-xs">{p.name}</strong><div className="mt-1 text-xs text-muted-foreground">{p.alias}</div></td><td className="px-4 py-3"><EnvBadge env={p.env} /></td><td className="whitespace-pre-line px-4 py-3 font-mono text-xs text-muted-foreground">{p.servers}</td><td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.account}</td><td className="px-4 py-3"><span className="text-xs font-medium text-success">已开启</span></td><td className="px-4 py-3 font-mono text-xs">{p.logs}</td><td className="px-5 py-3 text-right text-xs font-semibold text-primary">编辑</td></tr>)}</tbody></table></div>
+      </section>
+      <section className="panel mt-5"><button onClick={() => setAssetsOpen((v) => !v)} className="flex w-full items-center gap-3 px-5 py-4 text-left"><Layers3 className="size-4 text-primary"/><span className="font-display text-sm font-semibold">资产清单</span><span className="text-xs text-muted-foreground">共 12 台可用服务器</span><ChevronDown className={`ml-auto size-4 text-muted-foreground transition-transform ${assetsOpen ? "rotate-180" : ""}`} /></button>{assetsOpen && <div className="grid gap-2 border-t border-border p-5 sm:grid-cols-3">{["10.20.1.11 · order-prod-01","10.20.1.12 · order-prod-02","10.20.1.41 · payment-prod"].map((a) => <button key={a} className="flex items-center justify-between rounded-md border border-border bg-field p-3 font-mono text-xs text-muted-foreground hover:border-primary/40">{a}<Copy className="size-3.5" /></button>)}</div>}</section>
+    </>}
+  </main></ConsoleShell>;
 }
+
+function PanelTitle({ icon: Icon, title, subtitle, actions }: { icon: typeof Server; title: string; subtitle: string; actions?: React.ReactNode }) { return <div className="flex flex-col gap-3 border-b border-border px-5 py-4 sm:flex-row sm:items-center"><div className="flex items-center gap-3"><div className="grid size-8 place-items-center rounded-md bg-primary/12 text-primary"><Icon className="size-4" /></div><div><h2 className="font-display text-sm font-semibold">{title}</h2><p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p></div></div>{actions && <div className="flex gap-2 sm:ml-auto">{actions}</div>}</div>; }
+function Field({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) { return <label><span className={labelClass}>{label}</span><input className={`${fieldClass} ${mono ? "font-mono text-xs" : ""}`} defaultValue={value} /></label>; }
+function EnvBadge({ env }: { env: "正式" | "测试" }) { return <span className={`inline-flex rounded-md px-2 py-1 text-[10px] font-semibold ${env === "正式" ? "bg-danger/10 text-danger" : "bg-info/10 text-info"}`}>{env}</span>; }
+function ProjectEditor({ project, onBack }: { project: Project; onBack: () => void }) { const [advanced,setAdvanced]=useState(false); return <section className="panel max-w-4xl"><div className="flex items-center justify-between border-b border-border px-5 py-4"><button onClick={onBack} className="text-sm font-medium text-muted-foreground hover:text-foreground">← 返回项目列表</button><span className="font-mono text-xs text-muted-foreground">EDIT / {project.name}</span></div><div className="space-y-6 p-5 md:p-7"><div><h2 className="section-label">基础信息</h2><div className="mt-3 grid gap-4 md:grid-cols-3"><Field label="项目名" value={project.name} mono/><Field label="中文名（备注）" value={project.alias}/><label><span className={labelClass}>环境</span><select className={fieldClass} defaultValue={project.env}><option>正式</option><option>测试</option></select></label></div></div><div><h2 className="section-label">服务器与日志</h2><div className="mt-3 space-y-4"><label><span className={labelClass}>服务器 IP（每行一台）</span><textarea className="textarea" defaultValue={project.servers.replace("3 台集群","10.20.1.11\n10.20.1.12\n10.20.1.13")} /></label><label><span className={labelClass}>日志文件路径（每行一个）</span><textarea className="textarea" defaultValue="/apps/jar/log/application.out" /></label><Field label="关注关键词（可选）" value="ERROR|Exception|Timeout" mono /></div></div><div className="rounded-md border border-border"><button onClick={() => setAdvanced(v=>!v)} className="flex w-full items-center px-4 py-3 text-sm font-semibold">高级选项 <ChevronDown className={`ml-auto size-4 transition-transform ${advanced?"rotate-180":""}`}/></button>{advanced && <div className="grid gap-4 border-t border-border p-4 md:grid-cols-2"><Field label="允许命令" value="grep, tail, cat, jstack" mono/><Field label="拒绝命令" value="rm, reboot, shutdown" mono/><label className="flex items-center gap-3 md:col-span-2"><input type="checkbox" defaultChecked className="size-4 accent-[var(--primary)]"/><span className="text-sm">启用危险命令拦截</span></label></div>}</div></div><div className="flex items-center border-t border-border bg-field/60 px-5 py-4"><button className="btn-primary">保存项目</button><button onClick={onBack} className="btn-secondary ml-2"><X className="size-3.5"/>取消</button><button className="ml-auto inline-flex h-9 items-center gap-2 rounded-md border border-danger/30 px-3 text-xs font-semibold text-danger hover:bg-danger/10"><Trash2 className="size-3.5"/>删除此项目</button></div></section>; }
