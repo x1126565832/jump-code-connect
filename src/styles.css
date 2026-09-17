@@ -168,4 +168,50 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
   }
+  body {
+    font-family: var(--font-sans);
+  }
+}
+
+@keyframes ops-blink {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0;
+  }
+}
+@keyframes ops-pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+@keyframes ops-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@utility ops-blink {
+  animation: ops-blink 1.1s steps(1) infinite;
+}
+@utility ops-pulse-dot {
+  animation: ops-pulse-dot 1.6s ease-in-out infinite;
+}
+@utility ops-log-in {
+  animation: ops-fade-up 0.35s ease-out both;
+
 }
