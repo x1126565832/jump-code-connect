@@ -377,7 +377,7 @@ function Console() {
           {!following && (
             <button
               onClick={() => setFollowing(true)}
-              className="absolute bottom-6 right-[22rem] flex items-center gap-2 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-ink shadow-lg"
+              className="absolute bottom-4 right-6 flex items-center gap-2 rounded-full bg-brand px-3 py-1.5 text-xs font-semibold text-ink shadow-lg"
             >
               <span className="size-1.5 rounded-full bg-ink" />
               跳至最新
