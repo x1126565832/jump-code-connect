@@ -300,7 +300,7 @@ function Console() {
           </div>
         </aside>
 
-        <main className="flex min-w-0 flex-1 flex-col">
+        <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="flex items-center gap-2 border-b border-line bg-panel px-4 py-2">
             <span className="font-mono text-xs text-muted-foreground">tail -f app.log</span>
             <div className="ml-auto flex items-center gap-1.5">
